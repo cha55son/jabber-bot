@@ -74,7 +74,8 @@ module Jabber
     #     :is_public => true,
     #     :presence  => :chat,
     #     :priority  => 5,
-    #     :status    => 'Hello, I am PublicBot.'
+    #     :status    => 'Hello, I am PublicBot.',
+    #     :prefix    => '!'
     #   )
     #
     def initialize(config)
@@ -84,6 +85,11 @@ module Jabber
 
       if @config[:name].nil? || @config[:name].length == 0
         @config[:name] = @config[:jabber_id].sub(/@.+$/, '')
+      end
+
+      # If no prefix is provided then every command will be parsed.
+      if @config[:prefix].nil? 
+        @config[:prefix] = ''
       end
 
       unless @config[:master].is_a?(Array)
@@ -290,8 +296,14 @@ module Jabber
     def add_command_meta(name, command, is_alias=false) #:nodoc:
       syntax = command[:syntax]
 
+      if syntax.is_a?(Array)
+        syntax = syntax.map do |tax|
+            @config[:prefix] + tax
+        end
+      end
+
       @commands[:meta][name] = {
-        :syntax      => syntax.is_a?(Array) ? syntax : [syntax],
+        :syntax      => syntax.is_a?(Array) ? syntax : [@config[:prefix] + syntax],
         :description => command[:description],
         :is_public   => command[:is_public] || false,
         :is_alias    => is_alias
@@ -339,7 +351,7 @@ module Jabber
 
         if command.nil?
           help_message = "I don't understand '#{command_name}' Try saying" +
-              " 'help' to see what commands I understand."
+              " '#{@config[:prefix]}help' to see what commands I understand."
         else
           help_message = ''
           command[:syntax].each { |syntax| help_message += "#{syntax}\n" }
@@ -369,6 +381,12 @@ module Jabber
     def parse_command(sender, message) #:nodoc:
       is_master = master?(sender)
 
+      # Only parse the command if it matches the prefix.
+      return if @config[:prefix] != '' && message[0, 1] != @config[:prefix]
+
+      # Command has the proper prefix, strip it and continue on.
+      message[0] = ''
+
       if @config[:is_public] || is_master
         @commands[:spec].each do |command|
           if command[:is_public] || is_master
@@ -387,7 +405,7 @@ module Jabber
         end
 
         if @config[:misunderstood_message]
-          response = "I don't understand '#{message.strip}' Try saying 'help' " +
+          response = "I don't understand '#{message.strip}' Try saying '#{@config[:prefix]}help' " +
               "to see what commands I understand."
           deliver(sender, response)
         end
@@ -426,6 +444,5 @@ module Jabber
 
       listener_thread.join
     end
-
   end
 end
